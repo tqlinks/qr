@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phân Tích Tiếng Hàn Từ Clipboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        #pasteArea {
+            border: 2px dashed #4CAF50;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background-color: #e8f5e9;
+            color: #2e7d32;
+            font-weight: bold;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+        }
+        #pasteArea:hover { background-color: #c8e6c9; }
+        #preview {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 8px;
+            display: none;
+            margin: 10px auto;
+            border: 1px solid #ddd;
+        }
+        .result-box {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+            white-space: pre-wrap;
+            display: none;
+            line-height: 1.6;
+        }
+        .loader {
+            display: none;
+            text-align: center;
+            font-style: italic;
+            color: #666;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🇰🇷 Phân Tích Tiếng Hàn Trực Tiếp</h2>
+    <p>Nhấp vào khung bên dưới và bấm <strong>Ctrl + V</strong> (hoặc Cmd + V) để dán hình ảnh từ Clipboard.</p>
+
+    <div id="pasteArea">
+        CLICK VÀO ĐÂY VÀ BẤM CTRL + V ĐỂ DÁN ẢNH
+    </div>
+
+    <img id="preview" alt="Ảnh xem trước" />
+    <div id="loading" class="loader">Đang dùng AI phân tích tiếng Hàn... Vui lòng đợi!</div>
+    <div id="result" class="result-box"></div>
+</div>
+
+<script>
+    // BẠN CẦN THAY API KEY CỦA MÌNH VÀO ĐÂY (Lấy từ Google AI Studio)
+    const GEMINI_API_KEY = 'ĐIỀN_API_KEY_CỦA_BẠN_VÀO_ĐÂY'; 
+
+    const pasteArea = document.getElementById('pasteArea');
+    const preview = document.getElementById('preview');
+    const resultBox = document.getElementById('result');
+    const loading = document.getElementById('loading');
+
+    // Bắt sự kiện Paste trên toàn trang
+    window.addEventListener('paste', async (e) => {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        let imageBlob = null;
+
+        for (const item of items) {
+            if (item.type.indexOf('image') === 0) {
+                imageBlob = item.getAsFile();
+                break;
+            }
+        }
+
+        if (!imageBlob) {
+            alert('Không tìm thấy hình ảnh trong Clipboard!');
+            return;
+        }
+
+        // Hiển thị ảnh
+        preview.src = URL.createObjectURL(imageBlob);
+        preview.style.display = 'block';
+        resultBox.style.display = 'none';
+        
+        // Đọc ảnh thành Base64
+        const reader = new FileReader();
+        reader.readAsDataURL(imageBlob);
+        reader.onloadend = async () => {
+            const base64data = reader.result.split(',')[1];
+            await analyzeKoreanText(base64data, imageBlob.type);
+        };
+    });
+
+    async function analyzeKoreanText(base64Image, mimeType) {
+        loading.style.display = 'block';
+
+        const promptText = `
+            Bạn là một chuyên gia ngôn ngữ tiếng Hàn. Hãy nhìn vào bức ảnh này và làm các bước sau:
+            1. Trích xuất toàn bộ văn bản tiếng Hàn có trong ảnh (OCR).
+            2. Kiểm tra xem câu đó có sai chính tả, ngữ pháp, hay dùng từ thiếu tự nhiên không.
+            3. Viết lại thành một câu tiếng Hàn chuẩn xác, tự nhiên nhất (như người bản xứ).
+            4. Dịch câu chuẩn đó sang tiếng Việt.
+            Trình bày rõ ràng theo từng mục.
+        `;
+
+        const requestBody = {
+            contents: [{
+                parts: [
+                    { text: promptText },
+                    {
+                        inline_data: {
+                            mime_type: mimeType,
+                            data: base64Image
+                        }
+                    }
+                ]
+            }]
+        };
+
+        try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            const data = await response.json();
+            
+            if(data.error) {
+                throw new Error(data.error.message);
+            }
+
+            const aiResponse = data.candidates[0].content.parts[0].text;
+            resultBox.innerHTML = aiResponse;
+            resultBox.style.display = 'block';
+
+        } catch (error) {
+            console.error(error);
+            resultBox.innerHTML = `<span style="color:red">Lỗi: ${error.message}</span>`;
+            resultBox.style.display = 'block';
+        } finally {
+            loading.style.display = 'none';
+        }
+    }
+</script>
+
+</body>
+</html>
